@@ -104,8 +104,9 @@ class HartreeFockEngine():
             new_energy = self.calculateEnergy(new_density)
             # Diffs
             delta_energy = new_energy - total_energy
-            delta_density = math.sqrt(
-                np.square(np.subtract(new_density, density_mat).real).mean())
+            #print(np.square(np.subtract(new_density, density_mat).real).mean())
+            delta_density = math.sqrt(np.square(np.subtract(new_density, density_mat).real).mean())
+            
             # Keep track of iterations
             iterations += 1
             # Update energy and density

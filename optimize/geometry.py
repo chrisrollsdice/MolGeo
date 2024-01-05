@@ -1,3 +1,5 @@
+import math
+import random
 from scipy.optimize import minimize
 from pyscf import gto
 import numpy as np
@@ -13,15 +15,40 @@ def calculateGeometry(mol: List[Tuple[int, float, float, float]], charge: int = 
     x, z = separateCoordsAndCharge(mol)
 
     f: Callable = energyFunction(z, charge, basis, unit)
+
+    temp_func: Callable = temperatureFunction(1)
+    x_new, cycles = simulatedAnnealing(f, x, temp_func, 25 * z.shape[0])
+
+    print ("Completed initial estimate. Refining.")
+
     g: Callable = gradientFunction(z, charge, basis, unit)
 
     max_iter = 50 * z.shape[0]
 
-    res = minimize(f, x, method='BFGS', jac=g, options={
+    res = minimize(f, x_new, method='BFGS', jac=g, options={
                    'maxiter': max_iter, 'gtol': 5e-4})
 
-    return (f(res.x), joinCoordsAndCharge(res.x, z), res.success, res.nit)
+    return (f(res.x), joinCoordsAndCharge(res.x, z), res.success, res.nit + cycles)
+    
 
+def simulatedAnnealing(f: Callable, x: np.ndarray, t: Callable, max_iter: float) -> Tuple[np.ndarray, int]:
+    y = f(x)
+    x_best, y_best = x, y
+    cycles = 0
+    for k in range(max_iter):
+        x_new = candidate(x)
+        y_new = f(x_new)
+        delta_y = y_new - y
+        if delta_y <= 0 or random.uniform(0,1) < math.exp(-delta_y / t(k)):
+            x, y = x_new, y_new
+        if y_new < y_best:
+            x_best, y_best = x_new, y_new
+        cycles += 1
+        if t(k) <= 1e-6: break
+    return x_best, cycles
+
+def candidate(x: np.ndarray) -> np.ndarray:
+    return x + (np.random.random(x.shape[0]) - 0.5)
 
 def separateCoordsAndCharge(mol: List[Tuple[int, float, float, float]]) -> Tuple[np.ndarray, np.ndarray]:
     x = np.empty(len(mol) * 3)
@@ -88,9 +115,17 @@ def evaluateGradient(x: np.ndarray, z: np.ndarray, charge: str, basis: str, unit
                    basis, unit, density=density)[0] - energy) / dx
     return (grad, density)
 
-
 def gradientFunction(z, charge, basis, unit) -> Callable:
     def b(x: np.ndarray) -> float:
         g, _ = evaluateGradient(x, z, charge, basis, unit)
         return g
     return b
+
+def temperatureFunction(init) -> Callable:
+    def c(i: int) -> float:
+        T = init * (0.5 ** (i - 1)) # exponential annealing schedule
+        if T > 1e-6:
+            return T
+        else:
+            return 1e-6
+    return c
